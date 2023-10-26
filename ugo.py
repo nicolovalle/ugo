@@ -467,7 +467,7 @@ if __name__ == "__main__":
 
         thermalized = thermalizedTime and thermalizedQC
 
-        NewQCNeeded = isongoing and GloQual != 'GOOD' and not thermalized
+        NewQCNeeded = (isongoing and GloQual == 'GOOD') or (isongoing and not thermalized)
        
     
         NotificationText = ""
