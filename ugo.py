@@ -19,11 +19,11 @@ import inspect
 # ITQW01 --> :warning: present in QC message, e.g. when run number does not match
 # ITRPHY --> New physics run
 
-INFO = 'INFO'
-WARNING = 'WARNING'
-ERROR = 'ERROR'
-FATAL = 'FATAL'
-DEBUG = 'DEBUG'
+INFO =    ' INFO'
+WARNING = ' WARN'
+ERROR =   'ERROR'
+FATAL =   'FATAL'
+DEBUG =   'DEBUG'
 
 VERSION = 'v1.0.0'
 
@@ -36,8 +36,8 @@ def LOG(severity, *message):
     funcname = str(inspect.stack()[1][3])
 
     tt = datetime.now()
-    tstamp = "%s-%d-%d-%d:%d:%d"%(str(tt.year)[-2:],tt.month,tt.day,tt.hour,tt.minute,tt.second)
-    print("[%s][%s][%s]"%(tstamp,filename+':'+funcname,severity),*message)
+    tstamp = "%s-%s-%s-%s:%s:%s"%(str(tt.year)[-2:],str(tt.month).zfill(2),str(tt.day).zfill(2),str(tt.hour).zfill(2),str(tt.minute).zfill(2),str(tt.second).zfill(2))
+    print("[%s][%s][%s]"%(tstamp,severity,filename+':'+funcname),*message)
 
     
 #______________________ Default, not formatted. Use only for emergencies___________
@@ -60,7 +60,7 @@ def SendAnUgo(message, username='Ugo', channel=target_channel):
     LOG(INFO,response)  
 
 #_________________________________________________________________________________
-def SendAnUgoNewRun(run, rtype, o2start, trgstart, ndet, ongoing, message, username='Ugo', channel=target_channel):
+def SendAnUgoNewRun(run, rtype, o2start, trgstart, ndet, nepns, ongoing, message, username='Ugo', channel=target_channel):
 
     web_url = 'https://mattermost.web.cern.ch/hooks/kk9cwkqoe7d7fqt3rbpe91uwwy'
 
@@ -75,6 +75,14 @@ def SendAnUgoNewRun(run, rtype, o2start, trgstart, ndet, ongoing, message, usern
 
     if len(tags) == 0:
         pretext = ''
+
+    def formattedstart(o2, trg):
+        if o2 == 'none':
+            return 'not found'
+        elif trg == 'none':
+            return str(o2)[:10]+'\n*O2*: '+str(o2)[11:]
+        else:
+            return str(o2)[:10]+'\n*O2*: '+str(o2)[11:]+'\n*Trg*: '+str(trg)[11:]
     
     payload = {
         'channel': channel,
@@ -87,13 +95,8 @@ def SendAnUgoNewRun(run, rtype, o2start, trgstart, ndet, ongoing, message, usern
                 'fields': [
                     {
                         'short': True,
-                        'title': 'O2 Start',
-                        'value': str(o2start)
-                    },
-                    {
-                        'short': True,
-                        'title': 'Trg Start',
-                        'value': str(trgstart)
+                        'title': 'Start',
+                        'value': formattedstart(o2start, trgstart)
                     },
                     {
                         'short': True,
@@ -104,6 +107,11 @@ def SendAnUgoNewRun(run, rtype, o2start, trgstart, ndet, ongoing, message, usern
                         'short': True,
                         'title': 'Detectors',
                         'value': str(ndet)
+                    },
+                    {
+                        'short': True,
+                        'title': 'EPNs',
+                        'value': str(nepns)
                     },
                     {
                         'short': False,
@@ -325,6 +333,9 @@ def QueryLogbook():  # return last_run_number, False
                 isongoing = False
             except:
                 isongoing = True
+            nEpns = 0
+            if bool(run['epn']):
+                nEpns = int(run['nEpns'])
             try:
                 O2startime = int(run['timeO2Start'])
             except:
@@ -333,12 +344,12 @@ def QueryLogbook():  # return last_run_number, False
                 Trgstartime = int(run['timeTrgStart'])
             except:
                 Trgstartime = -1
-            LOG(INFO,"Returning",run['runNumber'],", O2start",O2startime," Trgstart ",Trgstartime," type",RunType," ndet",ndet," , ongoing",isongoing)
-            return int(run['runNumber']),O2startime,Trgstartime,RunType,ndet,isongoing
+            LOG(INFO,"Returning",run['runNumber'],", O2start",O2startime," Trgstart ",Trgstartime," type",RunType," ndet",ndet," nEpns",nEpns," ongoing",isongoing)
+            return int(run['runNumber']),O2startime,Trgstartime,RunType,ndet,nEpns,isongoing
 
             
     LOG(ERROR,"Run not found, returning dummy values")
-    return -1,-1,-1,"unknown",-1,False
+    return -1,-1,-1,"unknown",-1,-1,False
         
 
     
@@ -358,11 +369,11 @@ if __name__ == "__main__":
             exit()
     
     
-    lastrunlogbook,timestart,trgstart,runtype,ndet,isongoing = QueryLogbook()
+    lastrunlogbook,timestart,trgstart,runtype,ndet,nepns,isongoing = QueryLogbook()
     if (runtype != "SYNTHETIC" and int(trgstart)<0) or int(timestart)<0:
         LOG(INFO,'Probably querying logbook while run was starting? Waiting 1 minute and doing again')
         time.sleep(60)
-        lastrunlogbook,timestart,trgstart,runtype,ndet,isongoing = QueryLogbook()
+        lastrunlogbook,timestart,trgstart,runtype,ndet,nepns,isongoing = QueryLogbook()
     lastruncache = ReadLastRun()
     qcneeded = bool(ReadQCNeeded())
     lastquality = ReadLastQuality()
@@ -381,9 +392,12 @@ if __name__ == "__main__":
             UgoText = "The run is NOT ongoing. Looking into QC."
         if runtype == "CALIBRATION":
             UgoText = "I will not check QC for calibration runs"
+        if nepns == 0:
+            UgoText = "No EPN workflows for this run. QC will not be checked."
+            
     
        
-        SendAnUgoNewRun(runnumber, str(runtype), tconvert(timestart/1000), tconvert(trgstart/1000), ndet, isongoing, UgoText)
+        SendAnUgoNewRun(runnumber, str(runtype), tconvert(timestart/1000), tconvert(trgstart/1000), ndet, nepns, isongoing, UgoText)
        
     
         secondsaftersor = (datetime.now()-datetime.fromtimestamp(timestart/1000)).total_seconds()
@@ -396,13 +410,12 @@ if __name__ == "__main__":
         LOG(INFO,"Waiting",waiting_time,"seconds")
         time.sleep(waiting_time)
 
-        if runtype == "CALIBRATION":
-            LOG(INFO,"Calibration run, skipping QC check")
+        if runtype == "CALIBRATION" or nepns == 0:
+            LOG(INFO,"Skipping QC check for run type",runtype," nEPNs=",nepns)
 
             WriteLastRun(runnumber)
             WriteLastQuality("NONE")
             WriteQCNeeded(False)
-            
 
         else:
     
