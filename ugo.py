@@ -25,7 +25,7 @@ ERROR =   'ERROR'
 FATAL =   'FATAL'
 DEBUG =   'DEBUG'
 
-VERSION = 'v1.0.0'
+VERSION = 'v1.1.0'
 
 target_channel = 'ugo-qc'
 
@@ -323,11 +323,14 @@ def QueryLogbook():  # return last_run_number, False
             runnumber = int(run['runNumber'])
             IsSynthetic = run['runType']['name'] == 'SYNTHETIC'
             IsCalibration = run['definition'] == 'CALIBRATION'
+            IsTechnical = run['runType']['name'] == 'TECHNICAL'
             RunType = 'PHYSICS/COSMICS'
             if IsSynthetic:
                 RunType = 'SYNTHETIC'
             if IsCalibration:
                 RunType = 'CALIBRATION'
+            if IsTechnical:
+                RunType = 'TECHNICAL'
             try:
                 o2end = int(run['timeO2End'])
                 isongoing = False
@@ -383,7 +386,7 @@ if __name__ == "__main__":
     if lastrunlogbook != lastruncache:
 
         LOG(INFO,"Entering the new run condition for run",lastrunlogbook,"started on ",timestart,"/",trgstart)
-    
+        qcneeded = True
         runnumber = lastrunlogbook
 
         if isongoing:
@@ -391,9 +394,14 @@ if __name__ == "__main__":
         else:
             UgoText = "The run is NOT ongoing. Looking into QC."
         if runtype == "CALIBRATION":
-            UgoText = "I will not check QC for calibration runs"
+            UgoText = "I will not check QC for calibration runs."
+            qcneeded = False
+        if runtype == "TECHNICAL":
+            UgoText = "I will not check QC for technical runs."
+            qcneeded = False
         if nepns == 0:
             UgoText = "No EPN workflows for this run. QC will not be checked."
+            qcneeded = False
             
     
        
@@ -403,14 +411,14 @@ if __name__ == "__main__":
         secondsaftersor = (datetime.now()-datetime.fromtimestamp(timestart/1000)).total_seconds()
     
         waiting_time = max(1, 5*60 - secondsaftersor)
-        if not isongoing or runtype == "CALIBRATION":
+        if not isongoing or not qcneeded:
             waiting_time = 1
         
     
         LOG(INFO,"Waiting",waiting_time,"seconds")
         time.sleep(waiting_time)
 
-        if runtype == "CALIBRATION" or nepns == 0:
+        if not qcneeded:
             LOG(INFO,"Skipping QC check for run type",runtype," nEPNs=",nepns)
 
             WriteLastRun(runnumber)
